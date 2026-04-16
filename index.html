@@ -1,0 +1,715 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Auto-Fusion Prototype</title>
+    <style>
+        :root {
+            --bg: #1e1e24;
+            --panel: #2b2b36;
+            --text: #e0e0e0;
+            --accent: #4da6ff;
+            --highlight: #ffd700;
+            --fusion-glow: #ff4df0;
+            --card-base: #8ca3a3;
+            --card-fusion: #a38cba;
+        }
+        body {
+            font-family: system-ui, -apple-system, sans-serif;
+            background-color: var(--bg);
+            color: var(--text);
+            margin: 0;
+            padding: 20px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            user-select: none;
+        }
+        h1, h2 { margin: 5px 0; }
+        .hud {
+            display: flex;
+            gap: 20px;
+            margin-bottom: 20px;
+            font-size: 1.2rem;
+            font-weight: bold;
+        }
+        .board-section {
+            background-color: var(--panel);
+            padding: 20px;
+            border-radius: 10px;
+            margin-bottom: 20px;
+            width: 100%;
+            max-width: 900px;
+            min-height: 200px;
+        }
+        .card-container {
+            display: flex;
+            gap: 15px;
+            flex-wrap: wrap;
+        }
+        .card {
+            width: 140px;
+            height: 200px;
+            background-color: var(--card-base);
+            border: 3px solid #111;
+            border-radius: 8px;
+            padding: 8px;
+            box-sizing: border-box;
+            display: flex;
+            flex-direction: column;
+            justify-content: space-between;
+            cursor: grab;
+            transition: transform 0.1s, box-shadow 0.1s;
+            color: #111;
+            position: relative;
+        }
+        .card:active { cursor: grabbing; }
+        .card:hover { transform: translateY(-5px); }
+        .card.is-fusion { background-color: var(--card-fusion); border-color: #523b6b; color: white;}
+        .card.is-fusion .card-title { color: white; border-bottom: 1px solid #ddd;}
+        
+        .card.glow {
+            box-shadow: 0 0 20px 5px var(--fusion-glow);
+            border-color: var(--fusion-glow);
+            transform: translateY(-5px);
+        }
+        .level-badge {
+            position: absolute;
+            top: -10px;
+            right: -10px;
+            background: var(--highlight);
+            color: #111;
+            border-radius: 50%;
+            width: 28px; height: 28px;
+            display: flex; justify-content: center; align-items: center;
+            font-weight: 900;
+            font-size: 0.9rem;
+            border: 2px solid #111;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.5);
+            z-index: 10;
+        }
+        .card.is-fusion .level-badge {
+            background: var(--card-fusion);
+            color: white;
+            border-color: #fff;
+        }
+        .card-title { font-weight: bold; font-size: 0.9rem; text-align: center; border-bottom: 1px solid #333; padding-bottom: 4px;}
+        .card-tag { font-size: 0.75rem; text-align: right; font-style: italic; margin-top: 2px; font-weight: bold;}
+        .card-stats { display: flex; justify-content: space-between; font-weight: bold; font-size: 1rem; }
+        .card-cost { text-align: center; font-size: 0.8rem; background: rgba(0,0,0,0.2); border-radius: 4px; margin: 4px 0; padding: 2px;}
+        
+        .lanes {
+            display: flex;
+            gap: 15px;
+            margin-bottom: 20px;
+            justify-content: center;
+        }
+        .lane-slot {
+            width: 140px;
+            height: 200px;
+            background-color: rgba(0,0,0,0.3);
+            border: 2px dashed #666;
+            border-radius: 8px;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            color: #666;
+            font-weight: bold;
+            box-sizing: border-box;
+        }
+
+        button {
+            background-color: var(--accent);
+            color: #fff;
+            border: none;
+            padding: 10px 20px;
+            font-size: 1rem;
+            border-radius: 5px;
+            cursor: pointer;
+            margin-bottom: 20px;
+        }
+        button:hover { background-color: #3b88d4; }
+        .log { margin-top: 10px; color: var(--highlight); height: 24px; font-weight: bold; font-size: 0.9rem;}
+    </style>
+</head>
+<body>
+
+    <div class="hud" style="justify-content: space-between; width: 100%; max-width: 900px;">
+        <div style="display:flex; gap:20px;">
+            <div>Stage: <span id="stage-display">1</span></div>
+            <div>Gold: <span id="gold-display">200</span>g</div>
+            <div>Shop Refresh: 10g</div>
+        </div>
+        <div style="display:flex; gap:20px;">
+            <div style="color:var(--accent);">Player LP: <span id="player-hp">8000</span></div>
+            <div style="color:#ff4d4d;">Enemy LP: <span id="enemy-hp">8000</span></div>
+        </div>
+    </div>
+    
+    <button onclick="refreshShop()">Refresh Shop (10g)</button>
+    <div style="display:flex; justify-content:space-between; align-items:center; width: 100%; max-width: 900px; margin-bottom: 10px;">
+        <div class="log" id="action-log" style="margin:0;">Welcome to the Draft Phase.</div>
+        <div class="log" id="synergy-display" style="color:var(--fusion-glow); margin:0;">Synergies: None</div>
+    </div>
+
+    <div class="board-section">
+        <h2>Drafting Shop (Click to Buy - 50g | Drag & Drop to Bench to Direct-Fuse)</h2>
+        <div class="card-container" id="shop-container"></div>
+    </div>
+
+    <div class="board-section">
+        <h2>Bench (Drag Base cards together to Fuse them)</h2>
+        <div class="card-container" id="bench-container"></div>
+    </div>
+
+    <div class="board-section">
+        <h2>Battlefield (Drag Bench units to Lanes)</h2>
+        <div class="lanes" id="enemy-lanes"></div>
+        <div class="lanes" id="player-lanes"></div>
+        <button onclick="simulateCombat()" style="width:100%; margin-top:10px; background-color:#ff4d4d; margin-bottom:0;">⚙️ End Turn / Sim Combat Phase</button>
+    </div>
+
+<script>
+    // --- 1. STATIC DATABASE ---
+    const DB = {
+        tags: { T_01: "Warrior", T_02: "Beast", T_03: "Zombie", T_04: "Machine", T_05: "Dragon", T_06: "Spellcaster" },
+        baseCards: [
+            { id: "B_001", name: "Novice Squire", tag: "T_01", baseAtk: 400, baseDef: 400, type: "base" },
+            { id: "B_002", name: "Feral Wolf", tag: "T_02", baseAtk: 600, baseDef: 300, type: "base" },
+            { id: "B_003", name: "Skeletal Knight", tag: "T_03", baseAtk: 500, baseDef: 200, type: "base" },
+            { id: "B_004", name: "Scrap Bot", tag: "T_04", baseAtk: 300, baseDef: 700, type: "base" },
+            { id: "B_005", name: "Lesser Drake", tag: "T_05", baseAtk: 800, baseDef: 200, type: "base" },
+            { id: "B_006", name: "Apprentice Mage", tag: "T_06", baseAtk: 300, baseDef: 400, type: "base" }
+        ],
+        fusionCards: {
+            "F_001": { id: "F_001", name: "Centaur Champion", baseAtk: 1500, baseDef: 1200, type: "fusion" },
+            "F_002": { id: "F_002", name: "Corrupted Knight", baseAtk: 1300, baseDef: 1600, type: "fusion" },
+            "F_003": { id: "F_003", name: "Cyber-Hound", baseAtk: 1700, baseDef: 800, type: "fusion" },
+            "F_004": { id: "F_004", name: "Skeletal Dragon", baseAtk: 1900, baseDef: 0, type: "fusion" },
+            "F_005": { id: "F_005", name: "Magitek Golem", baseAtk: 500, baseDef: 2500, type: "fusion" },
+            "F_006": { id: "F_006", name: "Dragon Slayer", baseAtk: 1800, baseDef: 1500, type: "fusion" }
+        },
+        recipes: [
+            { tagA: "T_01", tagB: "T_02", result: "F_001" },
+            { tagA: "T_01", tagB: "T_03", result: "F_002" },
+            { tagA: "T_02", tagB: "T_04", result: "F_003" },
+            { tagA: "T_03", tagB: "T_05", result: "F_004" },
+            { tagA: "T_04", tagB: "T_06", result: "F_005" },
+            { tagA: "T_05", tagB: "T_01", result: "F_006" }
+        ]
+    };
+
+    // --- 2. GAME STATE ---
+    let state = {
+        stage: 1,
+        gold: 200,
+        shop: [],
+        bench: [],
+        playerBoard: [null, null, null, null, null],
+        enemyBoard: [null, null, null, null, null],
+        playerLP: 8000,
+        enemyLP: 8000
+    };
+    
+    let draggedItem = null;
+
+    // --- 3. CORE LOGIC ---
+    function spawnEnemies() {
+        state.enemyBoard.forEach((card, i) => {
+            if (i >= state.stage) return; // limit enemy capacity
+            if (!card && Math.random() > 0.4) {
+                let tpl = DB.baseCards[Math.floor(Math.random() * DB.baseCards.length)];
+                state.enemyBoard[i] = createCardInstance(tpl, Math.random()>0.8 ? 2 : 1);
+            }
+        });
+    }
+
+    function initGame() {
+        refreshShop(true);
+        spawnEnemies();
+        updateUI();
+    }
+    
+    function createCardInstance(template, level = 1) {
+        let multiplier = 1;
+        if (level === 2) multiplier = 2.2;   // Level 2 boosts stats
+        if (level === 3) multiplier = 4.5; // Level 3 is massive scaling
+        
+        return {
+            id: template.id,
+            name: template.name,
+            tag: template.tag,
+            type: template.type,
+            level: level,
+            atk: Math.floor(template.baseAtk * multiplier),
+            def: Math.floor(template.baseDef * multiplier)
+        };
+    }
+    
+    function getSynergyCounts() {
+        let counts = {};
+        state.playerBoard.forEach(c => {
+            if (c && c.type === 'base' && c.tag) counts[c.tag] = (counts[c.tag] || 0) + 1;
+        });
+        return counts;
+    }
+
+    function getAugmentedCard(card, counts) {
+        if (!card) return null;
+        let aug = { ...card };
+        if (aug.type === 'base' && counts[aug.tag]) {
+            let count = counts[aug.tag];
+            if (aug.tag === 'T_01') { if (count >= 4) aug.def += 800; else if (count >= 2) aug.def += 300; }
+            if (aug.tag === 'T_02') { if (count >= 4) aug.atk += 700; else if (count >= 2) aug.atk += 300; }
+            if (aug.tag === 'T_03') { if (count >= 5) { aug.atk += 900; aug.def += 900; } else if (count >= 3) { aug.atk += 400; aug.def += 400; } }
+            if (aug.tag === 'T_04') { if (count >= 4) { aug.atk += 500; aug.def += 500; } else if (count >= 2) { aug.atk += 200; aug.def += 200; } }
+            if (aug.tag === 'T_05') { if (count >= 5) aug.atk += 1000; else if (count >= 3) aug.atk += 500; }
+            if (aug.tag === 'T_06') { if (count >= 4) { aug.atk += 700; aug.def += 300; } else if (count >= 2) { aug.atk += 300; aug.def += 100; } }
+        }
+        return aug;
+    }
+
+    function getFusionResult(tag1, tag2) {
+        if (!tag1 || !tag2) return null;
+        let foundRecipe = DB.recipes.find(r => 
+            (r.tagA === tag1 && r.tagB === tag2) || 
+            (r.tagA === tag2 && r.tagB === tag1)
+        );
+        return foundRecipe ? foundRecipe.result : null;
+    }
+
+    function refreshShop(isFree = false) {
+        if (!isFree) {
+            if (state.gold < 10) { logMessage("Not enough gold to refresh."); return; }
+            state.gold -= 10;
+        }
+        
+        state.shop = [];
+        for (let i = 0; i < 5; i++) {
+            const randomTemplate = DB.baseCards[Math.floor(Math.random() * DB.baseCards.length)];
+            state.shop.push(createCardInstance(randomTemplate, 1)); 
+        }
+        updateUI();
+        if (!isFree) logMessage("Shop refreshed.");
+    }
+
+    function buyCard(shopIndex) {
+        if (state.gold < 50) { logMessage("Not enough gold to buy unit."); return; }
+        if (state.bench.length >= 8) { logMessage("Bench is full!"); return; }
+
+        state.gold -= 50;
+        const boughtCard = state.shop.splice(shopIndex, 1)[0];
+        state.bench.push(boughtCard);
+        
+        logMessage(`Bought ${boughtCard.name}.`);
+        checkAutoLevel();
+        updateUI();
+    }
+    
+    // Auto-Chess 3-Unit Merge Logic (Scaling)
+    function checkAutoLevel() {
+        let merged = false;
+        // Check levels 1 and 2 to merge up
+        for (let level = 1; level <= 2; level++) {
+            let counts = {};
+            state.bench.forEach((card, index) => {
+                if (card.type === "base" && card.level === level) {
+                    if (!counts[card.id]) counts[card.id] = [];
+                    counts[card.id].push(index);
+                }
+            });
+            
+            for (let id in counts) {
+                if (counts[id].length >= 3) {
+                    // Perform merge
+                    let indicesToMerge = counts[id].slice(0, 3);
+                    indicesToMerge.sort((a,b) => b-a); // sort descending to remove cleanly
+                    
+                    indicesToMerge.forEach(idx => {
+                        state.bench.splice(idx, 1);
+                    });
+                    
+                    let template = DB.baseCards.find(c => c.id === id);
+                    let newCard = createCardInstance(template, level + 1);
+                    state.bench.push(newCard);
+                    logMessage(`AUTO-MERGE! Level ${level+1} ${template.name} created!`);
+                    merged = true;
+                    break; 
+                }
+            }
+            if (merged) break; // Break out to re-evaluate from scratch
+        }
+        
+        // Cascading merges (e.g. merging three L1s creates an L2, which completes three L2s)
+        if (merged) {
+            checkAutoLevel();
+        }
+    }
+
+    // Direct Fusion from Shop (Tempo)
+    function handleDirectFusion(shopIndex, benchIndex) {
+        const shopCard = state.shop[shopIndex];
+        const benchCard = state.bench[benchIndex];
+        
+        if (state.gold < 50) { 
+            logMessage("Not enough gold to direct-fuse."); 
+            return; 
+        }
+        
+        if (shopCard.type !== 'base' || benchCard.type !== 'base') return;
+        
+        let resultId = getFusionResult(shopCard.tag, benchCard.tag);
+        if (resultId) {
+            state.gold -= 50;
+            state.shop.splice(shopIndex, 1);
+            
+            let fusionTemplate = DB.fusionCards[resultId];
+            let newFusion = createCardInstance(fusionTemplate, 1);
+            
+            state.bench[benchIndex] = newFusion; // transforms in-place
+            logMessage(`DIRECT FUSION SUCCESS! Created ${newFusion.name} for 50g.`);
+            checkAutoLevel(); // Just in case, though fusions don't level
+            updateUI();
+        } else {
+            logMessage(`Invalid fusion combination.`);
+        }
+    }
+
+    // Drag-drop Bench to Bench Fusion
+    function handleBenchFusion(benchIndex1, benchIndex2) {
+        const card1 = state.bench[benchIndex1];
+        const card2 = state.bench[benchIndex2];
+        
+        if (card1.type !== 'base' || card2.type !== 'base') return; 
+        
+        let resultId = getFusionResult(card1.tag, card2.tag);
+        if (resultId) {
+            const maxIdx = Math.max(benchIndex1, benchIndex2);
+            const minIdx = Math.min(benchIndex1, benchIndex2);
+            state.bench.splice(maxIdx, 1);
+            state.bench.splice(minIdx, 1);
+            
+            let fusionTemplate = DB.fusionCards[resultId];
+            let newFusion = createCardInstance(fusionTemplate, 1);
+            state.bench.push(newFusion);
+            
+            logMessage(`FUSION SUCCESS! Created ${newFusion.name}.`);
+            updateUI();
+        } else {
+            logMessage(`Invalid fusion combination.`);
+        }
+    }
+
+    // --- 4. DRAG AND DROP EVENTS ---
+    function onDragStart(e, source, index) {
+        draggedItem = { source, index };
+        let draggedCard = source === 'shop' ? state.shop[index] : 
+                          (source === 'bench' ? state.bench[index] : state.playerBoard[index]);
+        
+        // Data transfer required for some browsers
+        e.dataTransfer.setData('text/plain', source + ',' + index);
+        e.dataTransfer.effectAllowed = 'copyMove';
+
+        // Check valid combinations to apply glow to bench
+        const benchEls = document.querySelectorAll('#bench-container .card');
+        state.bench.forEach((benchCard, bIndex) => {
+            if (source === 'bench' && bIndex === index) return;
+            if (draggedCard.type === 'base' && benchCard.type === 'base') {
+                if (getFusionResult(draggedCard.tag, benchCard.tag)) {
+                    benchEls[bIndex].classList.add('glow');
+                }
+            }
+        });
+
+        // Check valid combinations to apply glow to board
+        state.playerBoard.forEach((boardCard, bIndex) => {
+            if (source === 'playerBoard' && bIndex === index) return;
+            if (boardCard && draggedCard.type === 'base' && boardCard.type === 'base') {
+                if (getFusionResult(draggedCard.tag, boardCard.tag)) {
+                    const slot = document.querySelectorAll('#player-lanes .lane-slot')[bIndex];
+                    if (slot && slot.querySelector('.card')) {
+                        slot.querySelector('.card').classList.add('glow');
+                    }
+                }
+            }
+        });
+    }
+
+    function onDragEnd(e) {
+        document.querySelectorAll('.card.glow').forEach(el => el.classList.remove('glow'));
+    }
+
+    function onDragOver(e) {
+        e.preventDefault(); 
+        e.dataTransfer.dropEffect = 'copy';
+    }
+
+    function onDrop(e, targetSource, targetIndex) {
+        e.preventDefault();
+        onDragEnd(); // clear glows immediately
+        
+        if (!draggedItem) return;
+        
+        if (targetSource === 'benchContainer') {
+             if (draggedItem.source === 'playerBoard') {
+                 let c = state.playerBoard[draggedItem.index];
+                 state.playerBoard[draggedItem.index] = null;
+                 state.bench.push(c);
+                 updateUI();
+             }
+        } else if (targetSource === 'bench') {
+            if (draggedItem.source === 'shop') {
+                handleDirectFusion(draggedItem.index, targetIndex);
+            } else if (draggedItem.source === 'bench' && draggedItem.index !== targetIndex) {
+                handleBenchFusion(draggedItem.index, targetIndex);
+            } else if (draggedItem.source === 'playerBoard') {
+                let benchCard = state.bench[targetIndex];
+                let boardCard = state.playerBoard[draggedItem.index];
+                if (boardCard.type === 'base' && benchCard.type === 'base' && getFusionResult(boardCard.tag, benchCard.tag)) {
+                    let resultId = getFusionResult(boardCard.tag, benchCard.tag);
+                    state.playerBoard[draggedItem.index] = null;
+                    state.bench[targetIndex] = createCardInstance(DB.fusionCards[resultId], 1);
+                    logMessage(`FUSION SUCCESS! Created ${DB.fusionCards[resultId].name}.`);
+                } else {
+                    state.playerBoard[draggedItem.index] = benchCard;
+                    state.bench[targetIndex] = boardCard;
+                }
+                updateUI();
+            }
+        } else if (targetSource === 'playerBoard') {
+            if (targetIndex >= state.stage) {
+                logMessage("Lane locked. Increase your stage!");
+                return;
+            }
+            if (draggedItem.source === 'bench') {
+                let c = state.bench[draggedItem.index];
+                let boardCard = state.playerBoard[targetIndex];
+                if (!boardCard) {
+                    state.bench.splice(draggedItem.index, 1);
+                    state.playerBoard[targetIndex] = c;
+                } else if (c.type === 'base' && boardCard.type === 'base' && getFusionResult(c.tag, boardCard.tag)) {
+                    let resultId = getFusionResult(c.tag, boardCard.tag);
+                    state.bench.splice(draggedItem.index, 1);
+                    state.playerBoard[targetIndex] = createCardInstance(DB.fusionCards[resultId], 1);
+                    logMessage(`FUSION SUCCESS! Created ${DB.fusionCards[resultId].name}.`);
+                } else {
+                    let map = state.playerBoard[targetIndex];
+                    state.playerBoard[targetIndex] = c;
+                    state.bench[draggedItem.index] = map;
+                }
+                updateUI();
+            } else if (draggedItem.source === 'playerBoard' && draggedItem.index !== targetIndex) {
+                 let t = state.playerBoard[targetIndex];
+                 let dragged = state.playerBoard[draggedItem.index];
+                 if (t && dragged.type === 'base' && t.type === 'base' && getFusionResult(dragged.tag, t.tag)) {
+                    let resultId = getFusionResult(dragged.tag, t.tag);
+                    state.playerBoard[draggedItem.index] = null;
+                    state.playerBoard[targetIndex] = createCardInstance(DB.fusionCards[resultId], 1);
+                    logMessage(`FUSION SUCCESS! Created ${DB.fusionCards[resultId].name}.`);
+                 } else {
+                     state.playerBoard[targetIndex] = dragged;
+                     state.playerBoard[draggedItem.index] = t;
+                 }
+                 updateUI();
+            }
+        }
+        draggedItem = null;
+    }
+
+    function simulateCombat() {
+        logMessage("Combat started! Resolving...");
+
+        setTimeout(() => {
+            let combatLogs = [];
+            let counts = getSynergyCounts();
+
+            for(let i = 0; i < 5; i++) {
+                let p = getAugmentedCard(state.playerBoard[i], counts);
+                let e = state.enemyBoard[i];
+                
+                if (p && !e) {
+                    state.enemyLP -= p.atk;
+                    combatLogs.push(`L${i+1}: Direct ATK (-${p.atk})`);
+                } 
+                else if (!p && e) {
+                    state.playerLP -= e.atk;
+                    combatLogs.push(`L${i+1}: Enemy ATK (-${e.atk})`);
+                }
+                else if (p && e) {
+                    if (p.atk >= e.atk) {
+                        let diff = p.atk - e.atk;
+                        state.enemyLP -= diff;
+                        state.enemyBoard[i] = null; 
+                        combatLogs.push(`L${i+1}: P-Win (-${diff})`);
+                        if(p.atk === e.atk) state.playerBoard[i] = null; 
+                    } else {
+                        let diff = e.atk - p.atk;
+                        state.playerLP -= diff;
+                        state.playerBoard[i] = null; 
+                        combatLogs.push(`L${i+1}: E-Win (-${diff})`);
+                    }
+                }
+            }
+            if(combatLogs.length === 0) logMessage("No engagements.");
+            else logMessage(combatLogs.join(" | "));
+            
+            state.gold += 50; // income
+            if (state.stage < 5) state.stage++; // increase capacity
+            spawnEnemies();
+            refreshShop(true);
+            updateUI();
+        }, 1200);
+    }
+
+    // --- 5. UI RENDERING ---
+    function logMessage(msg) {
+        let el = document.getElementById('action-log');
+        el.innerText = msg;
+        // Blink animation for visibility
+        el.style.opacity = 0;
+        setTimeout(() => el.style.opacity = 1, 50);
+    }
+
+    function updateUI() {
+        document.getElementById('stage-display').innerText = state.stage;
+        document.getElementById('gold-display').innerText = state.gold;
+        document.getElementById('player-hp').innerText = state.playerLP;
+        document.getElementById('enemy-hp').innerText = state.enemyLP;
+        
+        let counts = getSynergyCounts();
+        let synergyTexts = [];
+        for (let tag in counts) {
+            let cnt = counts[tag];
+            if (tag === 'T_01' && cnt >= 2) synergyTexts.push(`Warrior (${cnt})`);
+            if (tag === 'T_02' && cnt >= 2) synergyTexts.push(`Beast (${cnt})`);
+            if (tag === 'T_03' && cnt >= 3) synergyTexts.push(`Zombie (${cnt})`);
+            if (tag === 'T_04' && cnt >= 2) synergyTexts.push(`Machine (${cnt})`);
+            if (tag === 'T_05' && cnt >= 3) synergyTexts.push(`Dragon (${cnt})`);
+            if (tag === 'T_06' && cnt >= 2) synergyTexts.push(`Spellcaster (${cnt})`);
+        }
+        let synDisplay = document.getElementById('synergy-display');
+        if (synDisplay) synDisplay.innerText = synergyTexts.length > 0 ? "Synergies: " + synergyTexts.join(", ") : "Synergies: None";
+
+        const shopContainer = document.getElementById('shop-container');
+        shopContainer.innerHTML = '';
+        state.shop.forEach((card, index) => {
+            let cardDiv = createCardDOM(card);
+            
+            // Interaction listeners
+            let isDragging = false;
+            cardDiv.ondragstart = (e) => { isDragging = true; onDragStart(e, 'shop', index); };
+            cardDiv.ondragend = (e) => { setTimeout(()=> isDragging=false, 100); onDragEnd(e); };
+            cardDiv.onclick = (e) => { if(!isDragging) buyCard(index); };
+            
+            shopContainer.appendChild(cardDiv);
+        });
+
+        const benchContainer = document.getElementById('bench-container');
+        benchContainer.ondragover = onDragOver;
+        benchContainer.ondrop = (e) => {
+            if (e.target === benchContainer) onDrop(e, 'benchContainer', -1);
+        };
+        benchContainer.innerHTML = '';
+        state.bench.forEach((card, index) => {
+            let cardDiv = createCardDOM(card);
+            
+            let isDragging = false;
+            cardDiv.ondragstart = (e) => { isDragging = true; onDragStart(e, 'bench', index); };
+            cardDiv.ondragend = (e) => { setTimeout(()=> isDragging=false, 100); onDragEnd(e); };
+            cardDiv.ondragover = onDragOver;
+            cardDiv.ondrop = (e) => onDrop(e, 'bench', index);
+            
+            benchContainer.appendChild(cardDiv);
+        });
+
+        const playerLanes = document.getElementById('player-lanes');
+        if (playerLanes) {
+            playerLanes.innerHTML = '';
+            state.playerBoard.forEach((card, index) => {
+                let slot = document.createElement('div');
+                slot.className = 'lane-slot';
+                
+                if (index >= state.stage) {
+                    slot.innerHTML = "🔒LOCKED";
+                    slot.style.backgroundColor = "rgba(0,0,0,0.6)";
+                } else {
+                    slot.ondragover = onDragOver;
+                    slot.ondrop = (e) => onDrop(e, 'playerBoard', index);
+                    
+                    if (card) {
+                        let augCard = getAugmentedCard(card, counts);
+                        let cardDiv = createCardDOM(augCard);
+                        let isDragging = false;
+                        cardDiv.ondragstart = (e) => { isDragging=true; onDragStart(e, 'playerBoard', index); };
+                        cardDiv.ondragend = (e) => { setTimeout(()=>isDragging=false,100); onDragEnd(e); };
+                        cardDiv.style.margin = "0";
+                        slot.appendChild(cardDiv);
+                    } else {
+                        slot.innerHTML = "LANE " + (index+1);
+                    }
+                }
+                playerLanes.appendChild(slot);
+            });
+        }
+
+        const enemyLanes = document.getElementById('enemy-lanes');
+        if (enemyLanes) {
+            enemyLanes.innerHTML = '';
+            state.enemyBoard.forEach((card, index) => {
+                let slot = document.createElement('div');
+                slot.className = 'lane-slot';
+                
+                if (index >= state.stage) {
+                    slot.innerHTML = "🔒LOCKED";
+                    slot.style.backgroundColor = "rgba(0,0,0,0.6)";
+                } else if (card) {
+                    let cardDiv = createCardDOM(card);
+                    cardDiv.style.margin = "0";
+                    cardDiv.draggable = false;
+                    slot.appendChild(cardDiv);
+                } else {
+                    slot.innerHTML = "ENEMY";
+                }
+                enemyLanes.appendChild(slot);
+            });
+        }
+    }
+
+    function createCardDOM(cardData) {
+        const div = document.createElement('div');
+        div.className = `card ${cardData.type === 'fusion' ? 'is-fusion' : ''}`;
+        div.draggable = true;
+
+        const tagName = cardData.tag ? DB.tags[cardData.tag] : "Unique";
+        let costStr, levelBadge;
+
+        if (cardData.type === 'base') {
+            costStr = "Base Unit";
+            levelBadge = `<div class="level-badge">L${cardData.level}</div>`;
+            if (cardData.level === 3) div.style.boxShadow = "0 0 15px gold";
+        } else {
+            costStr = "Tempo Fusion!";
+            levelBadge = `<div class="level-badge">F</div>`;
+        }
+
+        div.innerHTML = `
+            ${levelBadge}
+            <div>
+                <div class="card-title">${cardData.name}</div>
+                <div class="card-tag">[${tagName}]</div>
+            </div>
+            <div class="card-cost">${costStr}</div>
+            <div class="card-stats">
+                <span>⚔️ ${cardData.atk}</span>
+                <span>🛡️ ${cardData.def}</span>
+            </div>
+        `;
+        return div;
+    }
+
+    // Boot game
+    initGame();
+</script>
+</body>
+</html>
